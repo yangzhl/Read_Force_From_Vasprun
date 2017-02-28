@@ -11,7 +11,7 @@ except ImportError:
 
 __author__ = 'Jin Cao'
 __copyright__ = "Copyright 2017, Quantum Functional Materials Design and Application Laboratory"
-__version__ = "0.3"
+__version__ = "0.4"
 __maintainer__ = "Jin Cao"
 __email__ = "jincao2013@outlook.com"
 __date__ = "Feb 28, 2017"
@@ -130,6 +130,8 @@ def force_detail(force_matrix_full):
     return force_detail
 
 def main():
+    print('read force program running at ',time.asctime( time.localtime(time.time()) ))
+    print()
     output_file_name = 'force_' + time.strftime("%Y-%m-%d.%H.%M.%S", time.localtime()) + '.out'
     summary = []
     try:
@@ -216,6 +218,19 @@ def main():
 
             output.writelines("\n")
         output.writelines("--------------------------------------------------------------------------------------------\n\n")
+        
+    print()
+    print("************************  Summary  ************************")
+    print("--------------------------------------------------------------------------------------------")
+    print("Work_dir \t\t"+"last_max_force \t\t\t\t"+"min_force_of_all \t")
+    print("--------------------------------------------------------------------------------------------")
+    for item in summary:
+        print(item["work_dir"]+'\t'+\
+              str(item["last_max_force"])+'('+str(item["max_iter_num"])+','+item["fr_en_last"]+'eV)'+'\t\t'+\
+              str(item["min_force_of_all"])+'('+str(item["iter_num_of_min_force_of_all"])+','+item["fr_en_minforce"]+'eV)')
+    print("--------------------------------------------------------------------------------------------")
+    
+    print('\ndetail info and Summary have writen in ',output_file_name)
 '''
   main
 '''
