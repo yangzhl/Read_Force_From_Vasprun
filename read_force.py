@@ -2,6 +2,8 @@
 
 DEBUG = False
 import os
+import time
+
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
@@ -9,10 +11,10 @@ except ImportError:
     
 __author__ = 'Jin Cao'
 __copyright__ = "Copyright 2017, Quantum Functional Materials Design and Application Laboratory"
-__version__ = "0.1"
+__version__ = "0.2"
 __maintainer__ = "Jin Cao"
 __email__ = "jincao2013@outlook.com"
-__date__ = "Feb 1, 2017"
+__date__ = "Feb 28, 2017"
 	
 def repair_vasprun_xml(input_file_name='vasprun.xml',
                        output_file_name='vasprun_repaired.xml',
@@ -60,6 +62,9 @@ def max_force(force_matrix):
     return max(max_force_of_one_atom)
     
 def read_force_matrix(file_name):
+    '''
+        force_matrix_full = {}
+    '''
     try:
         tree = ET.parse(file_name)
     except:
@@ -68,62 +73,105 @@ def read_force_matrix(file_name):
                                        output_file_name='vasprun_repaired.xml',
                                        )
         tree = ET.parse(file_name)
-    '''
-    if temp_varray == None:
-        if DEBUG == True: print('vasprun.xml need repair')
-        file_name = repair_vasprun_xml(input_file_name='vasprun.xml',
-                                       output_file_name='vasprun_repaired.xml',
-                                       )
-        varray = tree.findall('calculation')[-1].findall('varray')
-    else:
-        varray = temp_varray
-    '''
-    varray = tree.findall('calculation')[-1].findall('varray')
-    for i in varray:
-        if i.attrib['name'] == 'forces':
-            force_xml = i
-    
-    atom_num = len(force_xml.findall('v'))
-    force_matrix = []
-    for i in force_xml.findall('v'):
-        force_matrix.append(i.text.strip().split())
 
-    for i in range(len(force_matrix)):
-        for j in range(len(force_matrix[i])):
-            force_matrix[i][j] = float(force_matrix[i][j])
-            
-    if DEBUG == True: print(force_matrix)
-    # print ('atom_num:',atom_num)
-    return {'atom_num':atom_num,
-            'force_matrix':force_matrix,
-            }
+    calculation_xml = tree.findall('calculation')
     
+    force_matrix_full = {}
+    for i in range(len(calculation_xml)):
+        force_xml = calculation_xml[i].findall('varray')[0]
+        force_matrix = []
+        for force_v in force_xml.findall('v'):
+            force_matrix.append(force_v.text.strip().split())
+    
+        force_matrix = [ [float(j) for j in i] for i in force_matrix ]
+        force_matrix_full[str(i+1)] = force_matrix
+
+    return force_matrix_full
+    
+def force_detail(force_matrix_full):
+    force_detail = {}
+    for i in range(len(force_matrix_full)):
+        force_detail[str(i+1)] = {}
+        force_matrix = force_matrix_full[str(i+1)]
+        force_detail[str(i+1)]['max_force'] = max_force(force_matrix)
+    return force_detail
+
 def main():
-    print ('>   Scrip of Read Max Force   <')
-    print ('+---------------------------------------+')
-    print ('| dir_name \t\t','max_force\t|')
-    print ('|---------------------------------------|')
-    log = []
-    listdir = os.listdir()
-    for dir_name in listdir:
+    summary = []
+    try:
+        os.remove("force.out")
+    except FileNotFoundError:
+        if DEBUG == True: print ("No such file or directory: 'force.out'")
+        
+    with open("force.out","w") as output:
+        output.writelines('read force program running at ')
+        output.writelines(time.asctime( time.localtime(time.time()) ))
+        output.writelines("\n \n")
+        
+    for dir_name in os.listdir():
         if os.path.isdir(dir_name) == True:
-            pwd = os.getcwd()
             os.chdir(dir_name)
             if os.path.exists('vasprun.xml') == False:
-                temp_log = '# vasprun not in '+str(dir_name)
-                log.append(temp_log)
-                os.chdir(pwd)
+                print ('# vasprun not in '+str(dir_name))
+                os.chdir('..')
                 continue
-
-            force_matrix = read_force_matrix('vasprun.xml')
-            print('| ',dir_name,' \t\t',max_force(force_matrix['force_matrix']), '\t|')
+            else:
+                force_matrix_full = read_force_matrix('vasprun.xml')
+                os.chdir('..')
+                
+            force_detail_dir = force_detail(force_matrix_full)
+            # summary
+            last_max_force = force_detail_dir[str(len(force_detail_dir)-1)]['max_force']
+            max_iter_num = len(force_detail_dir)
             
-            os.chdir(pwd)
-    print ('+---------------------------------------+')
-    for i in log:
-        print (i)
-    print('Done!')
-    
+            min_force_of_all = force_detail_dir['1']['max_force']
+            iter_num_of_min_force_of_all = 1
+            for key in force_detail_dir:
+                if float(force_detail_dir[key]['max_force']) < float(min_force_of_all):
+                    min_force_of_all = float(force_detail_dir[key]['max_force'])
+                    iter_num_of_min_force_of_all = key
+                    
+            summary.append({'work_dir':dir_name,
+                            'last_max_force':last_max_force,
+                            'max_iter_num':max_iter_num,
+                            'min_force_of_all':min_force_of_all,
+                            'iter_num_of_min_force_of_all':iter_num_of_min_force_of_all,
+                            })
+            # write detail
+            with open("force.out","a") as output:
+                output.writelines("************************  work_dir: ")
+                output.writelines(dir_name)
+                output.writelines("  ************************")
+                output.writelines("\n")
+                output.writelines("------------------------\n")
+                output.writelines("iter_num \tmax_force \n")
+                output.writelines("------------------------\n")
+                for i in range(len(force_detail_dir)):
+                    output.writelines(str(i)); output.writelines("\t\t\t")
+                    output.writelines(str(force_detail_dir[str(i+1)]['max_force']))
+                    output.writelines("\n")
+                output.writelines("------------------------\n\n")
+
+            
+    # write summary
+    with open("force.out","a") as output:
+        output.writelines("************************  Summary  ************************")
+        output.writelines("\n")
+        output.writelines("----------------------------------------------------------\n")
+        output.writelines("Work_dir \t\t\t\t"+"last_max_force \t"+"max_force_of_all \t"+"\n")
+        output.writelines("----------------------------------------------------------\n")
+        for item in summary:
+            output.writelines(item["work_dir"]);output.writelines("\t")
+            output.writelines(str(item["last_max_force"]))
+            output.writelines('('+str(item["max_iter_num"])+')')
+            output.writelines("\t")
+            
+            output.writelines(str(item["min_force_of_all"]))
+            output.writelines('('+str(item["iter_num_of_min_force_of_all"])+')')
+            output.writelines("\t")
+            
+            output.writelines("\n")
+        output.writelines("----------------------------------------------------------\n\n")
 '''
   main
 '''
