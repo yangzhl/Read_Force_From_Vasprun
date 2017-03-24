@@ -11,7 +11,7 @@ except ImportError:
 
 __author__ = 'Jin Cao'
 __copyright__ = "Copyright 2017, Quantum Functional Materials Design and Application Laboratory"
-__version__ = "0.4"
+__version__ = "0.5"
 __maintainer__ = "Jin Cao"
 __email__ = "jincao2013@outlook.com"
 __date__ = "Feb 28, 2017"
@@ -100,8 +100,10 @@ def read_force_matrix(file_name):
         force_matrix = [ [float(j) for j in i] for i in force_matrix ]
         force_matrix_full[str(i+1)]['force_matrix'] = force_matrix
         # free_energy
-        free_energy = calculation_xml[i].findall('energy')[0].findall('i')[0].text.strip()
-        force_matrix_full[str(i+1)]['free_energy'] = free_energy
+        energy_xml_i = calculation_xml[i].findall('energy')[0]
+        free_energy = float(energy_xml_i.findall('i')[0].text.strip())
+        e_wo_entrp = float(energy_xml_i.findall('i')[1].text.strip())
+        force_matrix_full[str(i+1)]['free_energy'] = e_wo_entrp
 
     return force_matrix_full
 
@@ -125,8 +127,14 @@ def force_detail(force_matrix_full):
     for i in range(len(force_matrix_full)):
         force_detail[str(i+1)] = {}
         force_matrix = force_matrix_full[str(i+1)]['force_matrix']
-        force_detail[str(i+1)]['max_force'] = max_force(force_matrix)
-        force_detail[str(i+1)]['free_energy'] = force_matrix_full[str(i+1)]['free_energy']
+        force_detail[str(i+1)]['max_force'] = float(max_force(force_matrix))
+        force_detail[str(i+1)]['free_energy'] = float(force_matrix_full[str(i+1)]['free_energy'])
+        if i in [0]:
+            force_detail[str(i+1)]['d_energy'] = 0
+        else:
+            force_detail[str(i+1)]['d_energy'] = 1000*\
+                                                (float(force_matrix_full[str(i+1)]['free_energy']) - \
+                                                  float(force_matrix_full[str(i)]['free_energy']))
     return force_detail
 
 def main():
@@ -148,12 +156,15 @@ def main():
         if os.path.isdir(dir_name) == True:
             os.chdir(dir_name)
             if os.path.exists('vasprun.xml') == False:
-                print ('# vasprun not in '+str(dir_name))
+                print ('# vasprun not in `{}`'.format(dir_name))
                 os.chdir('..')
                 continue
             else:
                 force_matrix_full = read_force_matrix('vasprun.xml')
                 os.chdir('..')
+                if len(force_matrix_full) == 0:
+                    print ('# vasprun in `{}` may not comprise a ion step'.format(dir_name))
+                    continue
 
             force_detail_dict = force_detail(force_matrix_full)
             # summary
@@ -187,47 +198,53 @@ def main():
                 output.writelines(dir_name)
                 output.writelines("  ************************")
                 output.writelines("\n")
-                output.writelines("---------------------------------------------\n")
-                output.writelines("iter_num \tmax_force \t\tfree_energy(eV)  \n")
-                output.writelines("---------------------------------------------\n")
+                output.writelines("---------------------------------------------------------\n")
+                output.writelines('{:<12}{:<14}{:<18}{:<18}'\
+                                .format('iter_num','max_force','free_energy(eV)','d_energy(meV)'))
+                output.writelines("\n")
+                output.writelines("---------------------------------------------------------\n")
                 for i in range(len(force_detail_dict)):
-                    output.writelines(str(i+1)); output.writelines("\t\t\t")
-                    output.writelines(str(force_detail_dict[str(i+1)]['max_force']))
-                    output.writelines("\t\t")
-                    output.writelines(str(force_detail_dict[str(i+1)]['free_energy']))
+                    output.writelines('{:<12}'.format(str(i+1))) # ; output.writelines("\t\t\t")
+                    output.writelines('{:<14}'\
+                                        .format(str(force_detail_dict[str(i+1)]['max_force'])))
+                    output.writelines('{:<18}'\
+                                        .format(str(force_detail_dict[str(i+1)]['free_energy'])))
+                    output.writelines('{:>10.2f}'\
+                                        .format(force_detail_dict[str(i+1)]['d_energy']))
                     output.writelines("\n")
-                output.writelines("---------------------------------------------\n\n")
+                output.writelines("---------------------------------------------------------\n\n")
 
 
     # write summary
     with open(output_file_name,"a") as output:
         output.writelines("************************  Summary  ************************")
         output.writelines("\n")
-        output.writelines("--------------------------------------------------------------------------------------------\n")
-        output.writelines("Work_dir \t\t\t\t"+"last_max_force \t\t\t\t\t\t"+"min_force_of_all \t"+"\n")
-        output.writelines("--------------------------------------------------------------------------------------------\n")
+        output.writelines("--------------------------------------------------------------------------------------------------\n")
+        output.writelines('{:<30}{:<36}{:<35}'\
+                            .format('Work_dir','last_max_force','min_force_of_all'))
+        output.writelines("\n")
+        output.writelines("--------------------------------------------------------------------------------------------------\n")
         for item in summary:
-            output.writelines(item["work_dir"]);output.writelines("\t")
-            output.writelines(str(item["last_max_force"]))
-            output.writelines('('+str(item["max_iter_num"])+','+item["fr_en_last"]+'eV)')
-            output.writelines("\t\t")
-
-            output.writelines(str(item["min_force_of_all"]))
-            output.writelines('('+str(item["iter_num_of_min_force_of_all"])+','+item["fr_en_minforce"]+'eV)')
-            output.writelines("\t")
-
+            output.writelines('{:<30}'.format(item["work_dir"]))
+            output.writelines('{:<10.8f}({:<3},{:<14.8f}eV)'\
+                .format(item["last_max_force"],item["max_iter_num"],item["fr_en_last"]))
+            output.writelines('    ')
+            output.writelines('{:<10.8f}({:<3},{:<14.8f}eV)'\
+                .format(item["min_force_of_all"],item["iter_num_of_min_force_of_all"],item["fr_en_minforce"]))
             output.writelines("\n")
-        output.writelines("--------------------------------------------------------------------------------------------\n\n")
+        output.writelines("--------------------------------------------------------------------------------------------------\n\n")
         
     print()
     print("************************  Summary  ************************")
     print("--------------------------------------------------------------------------------------------")
-    print("Work_dir \t\t"+"last_max_force \t\t\t\t"+"min_force_of_all \t")
+    print('{:<30}{:<36}{:<35}'\
+                            .format('Work_dir','last_max_force','min_force_of_all'))
     print("--------------------------------------------------------------------------------------------")
     for item in summary:
-        print(item["work_dir"]+'\t'+\
-              str(item["last_max_force"])+'('+str(item["max_iter_num"])+','+item["fr_en_last"]+'eV)'+'\t\t'+\
-              str(item["min_force_of_all"])+'('+str(item["iter_num_of_min_force_of_all"])+','+item["fr_en_minforce"]+'eV)')
+        print('{:<29} {:<10.8f}({:<3},{:<14.8f}eV)    {:<10.8f}({:<3},{:<14.8f}eV)'\
+            .format(item["work_dir"],\
+                    item["last_max_force"],item["max_iter_num"],item["fr_en_last"],\
+                    item["min_force_of_all"],item["iter_num_of_min_force_of_all"],item["fr_en_minforce"]))
     print("--------------------------------------------------------------------------------------------")
     
     print('\ndetail info and Summary have writen in ',output_file_name)
